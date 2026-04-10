@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>正在開啟...</title>
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          sans-serif;
+        background: #f0f2f5;
+        min-height: 100dvh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #1c1e21;
+      }
+
+      .card {
+        background: #fff;
+        border-radius: 16px;
+        padding: 40px 32px;
+        max-width: 360px;
+        width: 90%;
+        text-align: center;
+        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+      }
+
+      .app-icon {
+        width: 72px;
+        height: 72px;
+        border-radius: 18px;
+        background: #1877f2;
+        margin: 0 auto 20px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .app-icon svg {
+        width: 44px;
+        height: 44px;
+        fill: #fff;
+      }
+
+      h1 {
+        font-size: 20px;
+        font-weight: 700;
+        margin-bottom: 8px;
+      }
+
+      #status {
+        font-size: 14px;
+        color: #65676b;
+        min-height: 20px;
+        margin-bottom: 24px;
+      }
+
+      .spinner {
+        width: 24px;
+        height: 24px;
+        border: 2.5px solid #e4e6eb;
+        border-top-color: #1877f2;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+        margin: 0 auto 24px;
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      .btn {
+        display: inline-block;
+        width: 100%;
+        padding: 12px;
+        border-radius: 8px;
+        font-size: 15px;
+        font-weight: 600;
+        text-decoration: none;
+        cursor: pointer;
+        border: none;
+        transition: opacity 0.15s;
+      }
+
+      .btn:active {
+        opacity: 0.85;
+      }
+
+      .btn-primary {
+        background: #1877f2;
+        color: #fff;
+      }
+
+      .btn-secondary {
+        background: #e4e6eb;
+        color: #1c1e21;
+        margin-top: 10px;
+      }
+
+      .actions {
+        display: flex;
+        flex-direction: column;
+        gap: 0;
+      }
+
+      .hidden {
+        display: none !important;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <div class="app-icon">
+        <!-- Facebook "f" logo -->
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path d="M24 12.073C24 5.405 18.627 0 12 0S0 5.405 0 12.073C0 18.1 4.388 23.094 10.125 24v-8.437H7.078v-3.49h3.047V9.41c0-3.025 1.792-4.697 4.533-4.697 1.312 0 2.686.236 2.686.236v2.97h-1.514c-1.491 0-1.956.93-1.956 1.886v2.267h3.328l-.532 3.49h-2.796V24C19.612 23.094 24 18.1 24 12.073z" />
+        </svg>
+      </div>
+
+      <h1>開啟 Facebook</h1>
+      <p id="status">正在偵測您的裝置...</p>
+      <div class="spinner" id="spinner"></div>
+
+      <div class="actions hidden" id="actions">
+        <a class="btn btn-primary hidden" id="open-app-btn" href="#">開啟 App</a>
+        <a class="btn btn-secondary hidden" id="open-web-btn" href="#" target="_blank" rel="noopener noreferrer">在瀏覽器中開啟</a>
+        <a class="btn btn-secondary hidden" id="store-btn" href="#" target="_blank" rel="noopener noreferrer">前往下載</a>
+      </div>
+    </div>
+
+    <script>
+      const PLAY_STORE =
+        "https://play.google.com/store/apps/details?id=com.facebook.katana";
+      const APP_STORE =
+        "https://apps.apple.com/app/facebook/id284882215";
+
+      // ─── DOM refs ─────────────────────────────────────────────────
+      const statusEl = document.getElementById("status");
+      const spinnerEl = document.getElementById("spinner");
+      const actionsEl = document.getElementById("actions");
+      const openAppBtn = document.getElementById("open-app-btn");
+      const openWebBtn = document.getElementById("open-web-btn");
+      const storeBtn = document.getElementById("store-btn");
+
+      function redirectTo(url) {
+        window.location.replace(url);
+      }
+
+      function showFallback({ message, appHref, storeHref, webUrl }) {
+        spinnerEl.classList.add("hidden");
+        statusEl.textContent = message;
+        actionsEl.classList.remove("hidden");
+
+        if (appHref) {
+          openAppBtn.href = appHref;
+          openAppBtn.classList.remove("hidden");
+        }
+        if (webUrl) {
+          openWebBtn.href = webUrl;
+          openWebBtn.classList.remove("hidden");
+        }
+        if (storeHref) {
+          storeBtn.href = storeHref;
+          storeBtn.classList.remove("hidden");
+        }
+      }
+
+      // ─── 主流程（任何 error → 直接導向目標網址）──────────────────
+      let webUrl = null;
+
+      try {
+        const params = new URLSearchParams(window.location.search);
+        webUrl = params.get("url");
+
+        if (!webUrl) throw new Error("missing url param");
+
+        // 安全性：只允許 facebook.com
+        const parsed = new URL(webUrl);
+        if (!["facebook.com", "www.facebook.com"].includes(parsed.hostname)) {
+          throw new Error("invalid domain");
+        }
+
+        const encoded = encodeURIComponent(webUrl);
+
+        // fb://facewebmodal/f?href= 可接受任意 FB URL，不需要 page ID
+        const iosDeepLink = `fb://facewebmodal/f?href=${encoded}`;
+
+        const androidIntentLink = [
+          `intent://facewebmodal/f?href=${encoded}`,
+          `#Intent`,
+          `scheme=fb`,
+          `package=com.facebook.katana`,
+          `S.browser_fallback_url=${encodeURIComponent(PLAY_STORE)}`,
+          `end`,
+        ].join(";");
+
+        const ua = navigator.userAgent;
+        const isIOS = /iPad|iPhone|iPod/.test(ua) && !window.MSStream;
+        const isAndroid = /Android/.test(ua);
+
+        if (isAndroid) {
+          statusEl.textContent = "正在開啟 Facebook App...";
+          redirectTo(androidIntentLink);
+
+          // 某些 WebView 不支援 intent://，備用 UI
+          setTimeout(() => {
+            showFallback({
+              message: "無法自動開啟，請手動操作",
+              appHref: androidIntentLink,
+              storeHref: PLAY_STORE,
+              webUrl,
+            });
+          }, 2500);
+        } else if (isIOS) {
+          statusEl.textContent = "正在開啟 Facebook App...";
+
+          let appOpened = false;
+          const onHide = () => { appOpened = true; };
+          document.addEventListener("visibilitychange", onHide);
+          window.addEventListener("pagehide", onHide);
+
+          redirectTo(iosDeepLink);
+
+          setTimeout(() => {
+            document.removeEventListener("visibilitychange", onHide);
+            if (appOpened || document.hidden) return;
+
+            showFallback({
+              message: "尚未安裝 Facebook，請先下載",
+              appHref: iosDeepLink,
+              storeHref: APP_STORE,
+              webUrl,
+            });
+          }, 1800);
+        } else {
+          statusEl.textContent = "正在導向 Facebook...";
+          redirectTo(webUrl);
+        }
+      } catch (_) {
+        redirectTo(webUrl ?? "https://www.facebook.com");
+      }
+    </script>
+  </body>
+</html>
