@@ -153,15 +153,23 @@
       const openWebBtn = document.getElementById("open-web-btn");
       const storeBtn = document.getElementById("store-btn");
 
-      function redirectTo(url) {
-        window.location.replace(url);
+      // ─── URL 解析（唯一需要 try-catch 的部分）────────────────────
+      function parseTargetUrl() {
+        try {
+          const raw = new URLSearchParams(window.location.search).get("url");
+          if (!raw) return null;
+          const { hostname } = new URL(raw);
+          if (!["facebook.com", "www.facebook.com"].includes(hostname)) return null;
+          return raw;
+        } catch {
+          return null;
+        }
       }
 
-      function showFallback({ message, appHref, storeHref, webUrl }) {
+      function showActions({ message, appHref, storeHref, webUrl }) {
         spinnerEl.classList.add("hidden");
         statusEl.textContent = message;
         actionsEl.classList.remove("hidden");
-
         if (appHref) {
           openAppBtn.href = appHref;
           openAppBtn.classList.remove("hidden");
@@ -176,26 +184,14 @@
         }
       }
 
-      // ─── 主流程（任何 error → 直接導向目標網址）──────────────────
-      let webUrl = null;
+      // ─── 主流程 ──────────────────────────────────────────────────
+      const webUrl = parseTargetUrl();
 
-      try {
-        const params = new URLSearchParams(window.location.search);
-        webUrl = params.get("url");
-
-        if (!webUrl) throw new Error("missing url param");
-
-        // 安全性：只允許 facebook.com
-        const parsed = new URL(webUrl);
-        if (!["facebook.com", "www.facebook.com"].includes(parsed.hostname)) {
-          throw new Error("invalid domain");
-        }
-
+      if (!webUrl) {
+        showActions({ message: "無效或缺少目標網址", webUrl: "https://www.facebook.com" });
+      } else {
         const encoded = encodeURIComponent(webUrl);
-
-        // fb://facewebmodal/f?href= 可接受任意 FB URL，不需要 page ID
         const iosDeepLink = `fb://facewebmodal/f?href=${encoded}`;
-
         const androidIntentLink = [
           `intent://facewebmodal/f?href=${encoded}`,
           `#Intent`,
@@ -211,11 +207,11 @@
 
         if (isAndroid) {
           statusEl.textContent = "正在開啟 Facebook App...";
-          redirectTo(androidIntentLink);
+          window.location.href = androidIntentLink;
 
-          // 某些 WebView 不支援 intent://，備用 UI
+          // 某些 WebView 攔截 intent://，備用 UI
           setTimeout(() => {
-            showFallback({
+            showActions({
               message: "無法自動開啟，請手動操作",
               appHref: androidIntentLink,
               storeHref: PLAY_STORE,
@@ -223,32 +219,41 @@
             });
           }, 2500);
         } else if (isIOS) {
-          statusEl.textContent = "正在開啟 Facebook App...";
+          // iOS 14+：window.location 在非 user gesture context 觸發 custom scheme 會被 Safari 封鎖
+          // 改為先渲染按鈕，由 <a> click（user gesture）觸發 deep link
+          statusEl.textContent = "點擊下方按鈕以開啟 App";
+          showActions({
+            message: "點擊下方按鈕以開啟 App",
+            appHref: iosDeepLink,
+            storeHref: APP_STORE,
+            webUrl,
+          });
+
+          // 同時用 hidden anchor click 嘗試自動觸發（部分情境有效）
+          const anchor = document.createElement("a");
+          anchor.href = iosDeepLink;
+          anchor.style.display = "none";
+          document.body.appendChild(anchor);
 
           let appOpened = false;
           const onHide = () => { appOpened = true; };
           document.addEventListener("visibilitychange", onHide);
           window.addEventListener("pagehide", onHide);
 
-          redirectTo(iosDeepLink);
+          anchor.click();
+          document.body.removeChild(anchor);
 
           setTimeout(() => {
             document.removeEventListener("visibilitychange", onHide);
+            // App 已成功開啟，不做任何事
             if (appOpened || document.hidden) return;
-
-            showFallback({
-              message: "尚未安裝 Facebook，請先下載",
-              appHref: iosDeepLink,
-              storeHref: APP_STORE,
-              webUrl,
-            });
+            // 未開啟：按鈕 UI 已在畫面上，更新 status 提示即可
+            statusEl.textContent = "App 未能自動開啟，請手動點擊";
           }, 1800);
         } else {
-          statusEl.textContent = "正在導向 Facebook...";
-          redirectTo(webUrl);
+          // Desktop
+          window.location.href = webUrl;
         }
-      } catch (_) {
-        redirectTo(webUrl ?? "https://www.facebook.com");
       }
     </script>
   </body>
