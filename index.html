@@ -249,14 +249,6 @@
             return firstSegment;
           }
 
-          if (
-            pathSegments.length === 1 &&
-            firstSegment &&
-            !RESERVED_PATHS.has(firstSegment.toLowerCase())
-          ) {
-            return firstSegment;
-          }
-
           return null;
         } catch {
           return null;
