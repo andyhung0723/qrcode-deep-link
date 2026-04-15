@@ -152,48 +152,13 @@
       const openAppBtn = document.getElementById("open-app-btn");
       const openWebBtn = document.getElementById("open-web-btn");
       const storeBtn = document.getElementById("store-btn");
-      const RESERVED_PATHS = new Set([
-        "about",
-        "ads",
-        "business",
-        "events",
-        "gaming",
-        "groups",
-        "hashtag",
-        "help",
-        "login",
-        "marketplace",
-        "messages",
-        "pages",
-        "people",
-        "permalink.php",
-        "photo",
-        "photos",
-        "plugins",
-        "post",
-        "posts",
-        "profile.php",
-        "reel",
-        "reels",
-        "search",
-        "settings",
-        "share",
-        "sharer",
-        "stories",
-        "story.php",
-        "video.php",
-        "videos",
-        "watch",
-      ]);
 
-      // ─── URL 解析（唯一需要 try-catch 的部分）────────────────────
-      function parseTargetUrl() {
+      // ─── 參數解析（唯一需要 try-catch 的部分）────────────────────
+      function parsePageId() {
         try {
-          const raw = new URLSearchParams(window.location.search).get("url");
-          if (!raw) return null;
-          const { hostname } = new URL(raw);
-          const normalizedHost = hostname.replace(/^www\./, "").toLowerCase();
-          if (!["facebook.com", "m.facebook.com"].includes(normalizedHost)) return null;
+          const params = new URLSearchParams(window.location.search);
+          const raw = params.get("id") || params.get("pageId");
+          if (!raw || !/^\d+$/.test(raw)) return null;
           return raw;
         } catch {
           return null;
@@ -221,62 +186,18 @@
         }
       }
 
-      function extractFacebookProfileRef(rawUrl) {
-        try {
-          const parsed = new URL(rawUrl);
-          const pathSegments = parsed.pathname.split("/").filter(Boolean);
-          const firstSegment = pathSegments[0] || "";
-          const profileId = parsed.searchParams.get("id");
-
-          if (firstSegment === "profile.php" && profileId) {
-            return profileId;
-          }
-
-          if (
-            firstSegment === "people" &&
-            pathSegments.length >= 3 &&
-            /^\d+$/.test(pathSegments[2])
-          ) {
-            return pathSegments[2];
-          }
-
-          if (firstSegment === "pages") {
-            const numericSegment = pathSegments.find((segment) => /^\d+$/.test(segment));
-            if (numericSegment) return numericSegment;
-          }
-
-          if (/^\d+$/.test(firstSegment)) {
-            return firstSegment;
-          }
-
-          return null;
-        } catch {
-          return null;
-        }
-      }
-
-      function buildIosDeepLink(rawUrl) {
-        const profileRef = extractFacebookProfileRef(rawUrl);
-        if (!profileRef) return null;
-        return `fb://profile?id=${encodeURIComponent(profileRef)}`;
-      }
-
       // ─── 主流程 ──────────────────────────────────────────────────
-      const webUrl = parseTargetUrl();
+      const pageId = parsePageId();
 
-      if (!webUrl) {
-        showActions({ message: "無效或缺少目標網址", webUrl: "https://www.facebook.com" });
+      if (!pageId) {
+        showActions({
+          message: "無效或缺少粉絲專頁編號",
+          webUrl: "https://www.facebook.com",
+        });
       } else {
-        const encoded = encodeURIComponent(webUrl);
-        const iosDeepLink = buildIosDeepLink(webUrl);
-        const androidIntentLink = [
-          `intent://facewebmodal/f?href=${encoded}`,
-          `#Intent`,
-          `scheme=fb`,
-          `package=com.facebook.katana`,
-          `S.browser_fallback_url=${encodeURIComponent(PLAY_STORE)}`,
-          `end`,
-        ].join(";");
+        const iosDeepLink = `fb://page/?id=${encodeURIComponent(pageId)}`;
+        const androidDeepLink = `fb://page/${encodeURIComponent(pageId)}`;
+        const webUrl = `https://www.facebook.com/profile.php?id=${encodeURIComponent(pageId)}`;
 
         const ua = navigator.userAgent;
         const isIOS = /iPad|iPhone|iPod/.test(ua) && !window.MSStream;
@@ -284,57 +205,46 @@
 
         if (isAndroid) {
           statusEl.textContent = "正在開啟 Facebook App...";
-          window.location.href = androidIntentLink;
+          window.location.href = androidDeepLink;
 
-          // 某些 WebView 攔截 intent://，備用 UI
+          // 某些 WebView 會攔截 custom scheme，備用 UI
           setTimeout(() => {
             showActions({
               message: "無法自動開啟，請手動操作",
-              appHref: androidIntentLink,
+              appHref: androidDeepLink,
               storeHref: PLAY_STORE,
               webUrl,
             });
           }, 2500);
         } else if (isIOS) {
-          if (!iosDeepLink) {
-            showActions({
-              message: "此 Facebook 連結無法穩定直接導入 App，請改用瀏覽器開啟",
-              storeHref: APP_STORE,
-              webUrl,
-            });
-          } else {
-            // iOS 14+：window.location 在非 user gesture context 觸發 custom scheme 會被 Safari 封鎖
-            // 改為先渲染按鈕，由 <a> click（user gesture）觸發 deep link
-            statusEl.textContent = "點擊下方按鈕以開啟 App";
-            showActions({
-              message: "點擊下方按鈕以開啟 App",
-              appHref: iosDeepLink,
-              storeHref: APP_STORE,
-              webUrl,
-            });
+          // iOS 14+：非 user gesture 觸發 custom scheme 常被 Safari 封鎖
+          // 先顯示按鈕，再嘗試 hidden anchor 自動觸發一次
+          statusEl.textContent = "點擊下方按鈕以開啟 App";
+          showActions({
+            message: "點擊下方按鈕以開啟 App",
+            appHref: iosDeepLink,
+            storeHref: APP_STORE,
+            webUrl,
+          });
 
-            // 同時用 hidden anchor click 嘗試自動觸發（部分情境有效）
-            const anchor = document.createElement("a");
-            anchor.href = iosDeepLink;
-            anchor.style.display = "none";
-            document.body.appendChild(anchor);
+          const anchor = document.createElement("a");
+          anchor.href = iosDeepLink;
+          anchor.style.display = "none";
+          document.body.appendChild(anchor);
 
-            let appOpened = false;
-            const onHide = () => { appOpened = true; };
-            document.addEventListener("visibilitychange", onHide);
-            window.addEventListener("pagehide", onHide);
+          let appOpened = false;
+          const onHide = () => { appOpened = true; };
+          document.addEventListener("visibilitychange", onHide);
+          window.addEventListener("pagehide", onHide);
 
-            anchor.click();
-            document.body.removeChild(anchor);
+          anchor.click();
+          document.body.removeChild(anchor);
 
-            setTimeout(() => {
-              document.removeEventListener("visibilitychange", onHide);
-              // App 已成功開啟，不做任何事
-              if (appOpened || document.hidden) return;
-              // 未開啟：按鈕 UI 已在畫面上，更新 status 提示即可
-              statusEl.textContent = "App 未能自動開啟，請手動點擊";
-            }, 1800);
-          }
+          setTimeout(() => {
+            document.removeEventListener("visibilitychange", onHide);
+            if (appOpened || document.hidden) return;
+            statusEl.textContent = "App 未能自動開啟，請手動點擊";
+          }, 1800);
         } else {
           // Desktop
           window.location.href = webUrl;
